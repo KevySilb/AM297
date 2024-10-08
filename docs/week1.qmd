@@ -1,0 +1,148 @@
+---
+title: "Week 1 state estimation problem"
+date: 2024-10-8
+author:
+  - name: Kevin Silberberg
+    id: ks
+    orcid: 0009-0009-4825-1865
+    email: ksilberb@ucsc.edu
+    affiliation:
+      - name: University of California Santa Cruz
+        city: Santa Cruz
+        state: CA
+        href: www.ucsc.edu
+format:
+  html:
+    code-fold: true
+    theme: cosmo
+    toc: true
+    code-links:
+      - icon: github
+        href: https://github.com/KevySilb/
+jupyter: julia-1.10
+
+---
+Consider the mass spring damped oscillator:
+
+\begin{align}
+	\begin{cases}
+		m\dot{x} + \beta\dot{x} + kx = 0 \\
+		x(0) = x_0 & \dot{x} = 0
+	\end{cases}
+\end{align}
+
+Let $\dot{x} = v$ such that $\dot{v} = -\frac{k}{m}x -\frac{\beta}{m}v$.
+
+We can rewrite the system in $\mathbf{\dot{x}} = \mathbf{A}\mathbf{x}$ such that 
+
+\begin{align}
+	\bigg[\begin{matrix}
+		\dot{x} \\
+		\dot{v}
+		\end{matrix}\bigg]
+		= \bigg[\begin{matrix}
+		0 & 1 \\
+		-\frac{k}{m} & -\frac{\beta}{m}
+		\end{matrix}\bigg]
+		\bigg[\begin{matrix}
+		x \\
+		v
+		\end{matrix}\bigg]
+\end{align}
+
+Let us measure the position of our mass spring and try to estimate the velocity.
+
+```{julia}
+#| warning: false
+using StaticArrays
+using DynamicalSystems
+using CairoMakie
+
+function massSpring(u0 = [0.0, 0.0]; m = 1.0, K = 0.5, λ = 0.05)
+    return CoupledODEs(massSpring_rule, u0, [m, K, λ])
+end
+
+function massSpring_rule(u, p, t)
+    dx = u[2]
+    dv = -(p[2]/p[1])*u[1] -(p[3]/p[1])*u[2]
+    return SVector{2}(dx, dv)
+end
+
+function makefig(u0, m, K, λ)
+    t = 0.0:0.01:5.0
+    ms = massSpring(u0; m, K, λ)
+    integ = ms.integ
+
+    fig = Figure();
+    ax = Axis(fig[1, 1],
+              title = "mass spring with gaussian noise",
+              xlabel = "time",
+              ylabel = "position")
+    pos = Float64[]
+    push!(pos, integ[1] + randn()*0.5)
+    for i = 1:length(t) - 1
+        step!(integ)
+        push!(pos, integ[1] + randn()*0.5)
+    end
+    scatter!(ax, t, pos)
+    display(fig)
+    return pos
+end
+
+m = 1.0
+K = 0.5
+λ = 0.05
+u0 = [5.0, 0.0]
+
+pos = makefig(u0, m, K, λ);
+```
+
+We are measuring $\mathbf{y_1} = \mathbf{C_1}\mathbf{x}$ where $$\mathbf{C_1} = \left[\begin{matrix} 1 & 0 \end{matrix}\right]$$
+
+Let us determine the observability matrix $\mathbf{O_{C_1}}$.
+The observability matrix is: 
+
+\begin{align}
+	O_{C} = 
+	\left[\begin{matrix}
+		C \\
+		CA \\
+		CA^2 \\
+		\cdots \\
+		CA^{n-1}
+		\end{matrix}\right]
+\end{align}
+
+The number of state variables $n = 2$ so the observability matrix is:
+
+\begin{align}
+	O_{C_1} = \left[\begin{matrix}
+		C_1 \\
+		C_1A
+		\end{matrix}\right] = 
+		\left[\begin{matrix}
+			1 & 0 \\
+			0 & 1
+		\end{matrix}\right]
+\end{align}
+
+where
+
+\begin{align}
+	C_1A = \left[\begin{matrix}
+		1 & 0 \end{matrix}\right]
+		\left[\begin{matrix}
+		0 & 1 \\
+		-\frac{k}{m} & -\frac{\beta}{m}\end{matrix}\right] = \left[\begin{matrix}0 & 1 \end{matrix}\right]
+\end{align}
+
+We can see that if we try to measure position, the sytem is observable because the observability matrix is full-rank.
+
+Let us find the observability matrix if we try and estimate the position, while measureing the velocity.
+
+Let $\mathbf{C_2} = \left[\begin{matrix}0 & 1\end{matrix}\right]$
+
+The observability matrix becomes:
+
+$$\left[\begin{matrix}0 & 1 \\ -\frac{k}{m} & -\frac{\beta}{m}\end{matrix}\right]$$
+
